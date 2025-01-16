@@ -13,19 +13,28 @@ logger = logging.getLogger(__name__)
 def _print(extMag, time, position, Bvec):
   if logger.getEffectiveLevel() < logging.INFO:
     return
-  info_str = f"{extMag:5s} {time}"
+  info_str = f"{extMag:10s} {time}"
   info_str += f" x: {position[0]:6.1f} y: {position[1]:6.1f} z: {position[2]:6.1f}"
   info_str += f" Bx: {Bvec[0]:10.2f} By: {Bvec[1]:10.2f} Bz: {Bvec[2]:10.2f}"
   logger.info(info_str)
 
 def field(times, positions, extMags, verbose=False, options=None):
 
-  # `extMag` is described at https://spacepy.github.io/irbempy.html
-  # Possible values are '0', 'MEAD', 'T87SHORT', 'T87LONG', 'T89', 'OPQUIET',
-  # 'OPDYN', 'T96', 'OSTA', 'T01QUIET', 'T01STORM', 'T05', 'ALEX', and 'TS07'.
+  # TODO: Get from a query to SpacePy:
+  extMags_avail = ['0', 'MEAD', 'T87SHORT', 'T87LONG', 'T89', 'OPQUIET', 'OPDYN', 'T96', 'OSTA', 'T01QUIET', 'T01STORM', 'T05', 'ALEX', 'TS07']
 
   if isinstance(extMags, str):
     extMags = [extMags]
+
+  for extMag in extMags:
+    if extMag not in extMags_avail:
+      raise ValueError(f"extMag {extMag} not in {extMags_avail}")
+    if extMag in ['T87SHORT', 'T87LONG', 'T89', 'T96', 'T01QUIET', 'T01STORM', 'T05', 'TS07']:
+      install_deps.omni()
+
+  # `extMag` is described at https://spacepy.github.io/irbempy.html
+  # Possible values are '0', 'MEAD', 'T87SHORT', 'T87LONG', 'T89', 'OPQUIET',
+  # 'OPDYN', 'T96', 'OSTA', 'T01QUIET', 'T01STORM', 'T05', 'ALEX', and 'TS07'.
 
   if options is None:
     options = [0, 0, 0, 0, 1]

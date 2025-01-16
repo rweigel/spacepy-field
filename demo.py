@@ -4,13 +4,18 @@ if False:
   import spacepy
   spacepy.toolbox.update(leapsecs=True)
 
-if False:
+if True:
   import logging
   logging.basicConfig(level=logging.INFO)
 
-times = ['1995-01-01T12:00:00']
-positions = [[3, 0, 0], [4, 0, 0], [5, 0, 0]]
+times = ['1995-01-02T12:00:00']
+#positions = [[3, 0, 0], [4, 0, 0], [5, 0, 0]]
+positions = [[3, 0, 0]]
 
-B = field(times, positions, ['T05', 'TS07'])
+# TODO: Get from a query to SpacePy:
+extMags = ['0', 'ALEX', 'MEAD', 'T87SHORT', 'T87LONG', 'T89', 'OPQUIET', 'OPDYN', 'T96', 'OSTA', 'T01QUIET', 'T01STORM', 'T05', 'TS07']
 
-print(B)
+for extMag in extMags:
+  print(80*"-")
+  print(f"extMag = {extMag}")
+  B = field(times, positions, extMag)
