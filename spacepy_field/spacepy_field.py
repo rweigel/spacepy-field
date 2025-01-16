@@ -18,10 +18,16 @@ def _print(extMag, time, position, Bvec):
   info_str += f" Bx: {Bvec[0]:10.2f} By: {Bvec[1]:10.2f} Bz: {Bvec[2]:10.2f}"
   logger.info(info_str)
 
-def field(times, positions, extMags, verbose=False, options=None):
+def field(times, positions, extMags, csys='GSM', options=None):
 
   # TODO: Get from a query to SpacePy:
   extMags_avail = ['0', 'MEAD', 'T87SHORT', 'T87LONG', 'T89', 'OPQUIET', 'OPDYN', 'T96', 'OSTA', 'T01QUIET', 'T01STORM', 'T05', 'ALEX', 'TS07']
+
+  if isinstance(positions, list) and len(positions) == 3:
+    positions = [positions]
+
+  if isinstance(times, str):
+    times = [times]
 
   if isinstance(extMags, str):
     extMags = [extMags]
@@ -57,7 +63,7 @@ def field(times, positions, extMags, verbose=False, options=None):
       install_deps.ts07(year=int(time[0:4]), doy=t.DOY[0])
 
     for position in positions:
-      coord = spc.Coords(position, 'GEO', 'car', use_irbem=True)
+      coord = spc.Coords(position, csys, 'car', use_irbem=True)
       for extMag in extMags:
         Bfield = irbem.get_Bfield(t, coord, extMag=extMag)
         Bvec = Bfield["Bvec"][0]
@@ -71,6 +77,8 @@ def field(times, positions, extMags, verbose=False, options=None):
 
   if len(extMags) == 1:
     if len(times) == 1:
+      if len(positions) == 1:
+        return B[extMags[0]][times[0]][0]
       return B[extMags[0]][times[0]]
     return B[extMags[0]]
   return B
