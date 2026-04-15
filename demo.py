@@ -1,22 +1,29 @@
-from spacepy_field.spacepy_field import field
+import spacepy
 
-if False:
-  import spacepy
-  spacepy.toolbox.update(leapsecs=True)
+import spacepy_field
 
-if True:
-  import logging
-  logging.basicConfig(level=logging.INFO)
 
-times = ['1995-01-02T12:00:00']
-#positions = [[3, 0, 0], [4, 0, 0], [5, 0, 0]]
-positions = [[-1.15, 2.86, 8.29]]
-times = ['2001-01-07T05:15:00']
+extMags = spacepy_field.external_models()
+extMags = ['0'] # IGRF
+intMag = 0 # IGRF
+csys = 'CDMAG'
 
-# TODO: Get from a query to SpacePy:
-extMags = ['0', 'ALEX', 'MEAD', 'T87SHORT', 'T87LONG', 'T89', 'OPQUIET', 'OPDYN', 'T96', 'OSTA', 'T01QUIET', 'T01STORM', 'T05', 'TS07']
 
+# Single time, single position
+time = '1995-01-02T12:00:00'
+position = [-1, 0, 0]
 for extMag in extMags:
-  print(80*"-")
-  print(f"extMag = {extMag}")
-  B = field(times, positions, extMag)
+  B = spacepy_field.field(time, position, extMag, csys=csys, intMag=intMag)
+  spacepy_field.print_results(time, position, extMag, B, csys, intMag)
+
+# Multiple times, single position
+times = ['1995-01-02T12:00:00', '1995-01-02T13:00:00']
+for extMag in extMags:
+  B = spacepy_field.field(times, position, extMag, csys, intMag=intMag)
+  spacepy_field.print_results(times, position, extMag, B, csys, intMag)
+
+# Multiple times, multiple positions
+positions = [position, position]
+for extMag in extMags:
+  B = spacepy_field.field(times, positions, extMag, csys=csys, intMag=intMag)
+  spacepy_field.print_results(times, position, extMag, B, csys, intMag)
