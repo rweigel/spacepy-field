@@ -53,7 +53,7 @@ def internal_model_name(intMag):
   return models.get(intMag, 'Unknown')
 
 
-def field(times, positions, extMag, csys='GSM', intMag=0):
+def field(times, positions, extMag, grid=False, csys='GSM', intMag=0, progress=False):
   """
   Given a time or list of times, position(s), and external magnetic field model,
   return the magnetic field vector(s) in GSM coordinates.
@@ -109,6 +109,31 @@ def field(times, positions, extMag, csys='GSM', intMag=0):
   if isinstance(times, str):
     times = [times]
 
+  if not grid:
+    if len(times) != len(positions):
+      raise ValueError("If grid=False, times and positions must have the same length")
+
+    n = len(times)
+    B = numpy.full((n, 3), numpy.nan)
+    for i, (time, position) in enumerate(zip(times, positions)):
+      if progress and (i % progress == 0 or i == n - 1):
+        print(f"\r{i+1}/{n}", end='', flush=True)
+
+      if extMag == 'TS07':
+        install_deps.ts07(year=int(time[0:4]), doy=t.DOY[0])
+
+      time = spt.Ticktock(time, 'ISO')
+      coord = spc.Coords(position, csys, 'car', use_irbem=True)
+      Bfield = irbem.get_Bfield(time, coord, extMag=extMag, options=options)
+      BGEO = Bfield["Bvec"][0]
+      if csys == 'GEO':
+        B[i] = BGEO
+      else:
+        B[i] = _transform_Bfield(BGEO, time, csys)
+    if progress:
+      print()
+
+    return B
 
   B = numpy.full((len(times), len(positions), 3), numpy.nan)
 
@@ -119,11 +144,10 @@ def field(times, positions, extMag, csys='GSM', intMag=0):
   # anyway for TS07.
   for i, time in enumerate(times):
 
-    t = spt.Ticktock(time, 'ISO')
-
     if extMag == 'TS07':
       install_deps.ts07(year=int(time[0:4]), doy=t.DOY[0])
 
+    t = spt.Ticktock(time, 'ISO')
     for j, position in enumerate(positions):
       coord = spc.Coords(position, csys, 'car', use_irbem=True)
       Bfield = irbem.get_Bfield(t, coord, extMag=extMag, options=options)

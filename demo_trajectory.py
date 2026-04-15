@@ -47,40 +47,26 @@ R_E = 6371.2
 import gc
 gc.set_threshold(10000, 10, 10)
 
+n_max = 100
 
-b_models = {}
-b_meas_tot = numpy.full((len(satellite_df), 3), numpy.nan)
+positions = (satellite_df[['x[km]', 'y[km]', 'z[km]']].values / R_E).tolist()
+
 times = []
 for idx, row in satellite_df.iterrows():
-
-  x = float(row['x[km]'])/R_E
-  y = float(row['y[km]'])/R_E
-  z = float(row['z[km]'])/R_E
-  position = [x, y, z]
-
-  bx = float(row['bx[nT]'])
-  by = float(row['by[nT]'])
-  bz = float(row['bz[nT]'])
-
   time = f"{int(row['year'])}-{int(row['month']):02d}-{int(row['day']):02d}T"
   time += f"{int(row['hour']):02d}:{int(row['minute']):02d}:00"
+  times.append(time)
 
-  times.append(datetime.datetime.strptime(time, '%Y-%m-%dT%H:%M:%S'))
+times = times[:n_max]
+positions = positions[:n_max]
 
-  b_igrf = spacepy_field.field(time, position, '0', csys='GSM', intMag=0)
-  b_meas_tot[idx, :] = numpy.array([bx+b_igrf[0, 0, 0], by+b_igrf[0, 0, 1], bz+b_igrf[0, 0, 2]])
+b_igrf = spacepy_field.field(times, positions, '0', grid=False, csys='GSM', intMag=0)
+b_meas = satellite_df[['bx[nT]', 'by[nT]', 'bz[nT]']].values[:n_max]
+b_meas_tot = b_meas + b_igrf
 
-  for extMag in extMags:
-    if extMag not in b_models:
-      b_models[extMag] = numpy.full((len(satellite_df), 3), numpy.nan)
-    b_model = spacepy_field.field(time, position, extMag, csys='GSM', intMag=0)
-    b_models[extMag][idx, :] = b_model[0, 0, :]
 
-    spacepy_field.print_results(time, position, extMag, b_model, 'GSM', 0, b_meas=numpy.array([b_meas_tot]))
-
-  if idx > 100:
-    break
-
-  print(f"{idx+1}/{len(satellite_df)} complete")
+b_models = {}
+for extMag in extMags:
+  b_models[extMag] = spacepy_field.field(times, positions, extMag, progress=True, grid=False, csys='GSM', intMag=0)
 
 import pdb; pdb.set_trace()
