@@ -1,6 +1,11 @@
 from setuptools import setup, find_packages
 
-install_requires = ["numpy", "spacepy"]
+install_requires = [
+    "numpy",
+    "pandas",
+    "spacepy",
+    "utilrsw[mpl,io] @ git+https://github.com/rweigel/utilrsw@main"
+]
 
 setup(
     name='spacepy_field',

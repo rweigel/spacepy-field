@@ -5,21 +5,10 @@ import pandas
 
 import spacepy_field
 
+import utilrsw
+
 import gc
 gc.set_threshold(10000, 10, 10)
-
-
-def insert_nan(times, matrix, max_gap):
-  """Insert NaN values in matrix where time gaps in times are greater than max_gap."""
-  import numpy
-  arr = []
-  for i in range(len(times)-1):
-    arr.append(matrix[i])
-    if times[i+1] - times[i] > max_gap:
-      arr.append(numpy.full(matrix.shape[1], numpy.nan))
-  arr.append(matrix[-1])
-
-  return arr
 
 
 def plot(b_dict, title="", figsize=(8.5, 12), facecolor='white', styles=None):
@@ -40,13 +29,15 @@ def plot(b_dict, title="", figsize=(8.5, 12), facecolor='white', styles=None):
   for i in range(n_stack):
     if i == 0:
       axs[i].set_title(title)
-    axs[i].plot(t, y1[:, i], 'k', label='measured')
+    ti, yi = utilrsw.mpl.insert_nans(t, y1[:, i])
+    axs[i].plot(ti, yi, 'k', label='measured')
     axs[i].set_ylabel(ylabels[i])
     axs[i].grid(True)
     for midx, model in enumerate(y2.keys()):
       stats = b_dict['metrics'][model]
       label = f"{model} (nans={stats['n_nans'][i]}, PE={stats['pe'][i]:.2f})"
-      axs[i].plot(t, y2[model][:, i], label=label)
+      ti, yi = utilrsw.mpl.insert_nans(t, y2[model][:, i])
+      axs[i].plot(ti, yi, label=label)
       axs[i].legend()
 
   datetick()
@@ -83,10 +74,30 @@ def compute(satellite_df, extMag, n_max=-1):
 
   b_models = {}
   for extMag in extMags:
-    print(f"  Calculating {extMag} model")
+    model_name = ""
+    if model_name == '0':
+      model_name = '(IGRF)'
+
+    print(f"  Calculating model '{extMag}' {model_name}")
     b_models[extMag] = spacepy_field.field(times, positions, extMag, progress=True, grid=False, csys='GSM', intMag=0)
 
-  return times, positions, b_models
+
+  db_meas = satellite_df[['bx[nT]', 'by[nT]', 'bz[nT]']].values[:n_max]
+
+  # Add IGRF field to get total field for comparison with measurement
+  b_meas = db_meas + b_models['0']
+
+  b_dict = {
+    'times': times,
+    'positions': positions,
+    'db_meas': db_meas,
+    'b_meas': b_meas,
+    'b_models': b_models
+  }
+
+  b_dict['metrics'] = metrics(b_dict['b_meas'], b_dict['b_models'])
+
+  return b_dict
 
 
 def metrics(b_meas, b_models):
@@ -104,67 +115,72 @@ def metrics(b_meas, b_models):
 
   return stats
 
-def calcs_write(b_sats, pkl_dir, pkl):
+
+def io_files(pkl_dir, pkl):
+  infile = os.path.join(pkl_dir, pkl)
   basename = os.path.splitext(os.path.basename(pkl))[0]
-  file = os.path.join(pkl_dir, f"{basename}.calcs.pkl")
-  print(f"  Writing {file}")
-  with open(file, "wb") as f:
-    pandas.to_pickle(b_sats, f)
+  outfile = os.path.join(pkl_dir, f"{basename}.calcs.pkl")
+  return infile, outfile
 
 
-def calcs_read(pkl_dir, pkl):
-  basename = os.path.splitext(os.path.basename(pkl))[0]
-  file = os.path.join(pkl_dir, f"{basename}.calcs.pkl")
-  print(f"  Reading {file}")
-  with open(file, "rb") as f:
-    return pandas.read_pickle(f)
+# If False, does not calculate models if .calcs.pkl file already exists.
+recalc_field = False
 
+# If True recomputes metrics. Use if metrics() changes.
+recalc_metrics = False
+
+plot_only = False
 
 # Number of data points to compute. -1 for all.
 n_max = -1
 
 # '0' (IGRF) must be in list
-extMags = ['0', 'T89', 'T96']
+extMags = ['0', 'MEAD', 'T89', 'T96']
 
 pkl_dir = "../timeseries-predict/data/raw/satellite-b/files/"
 
 
 pkls = ["goes8_1996_avg_900_omni.pkl", "goes9_1996_avg_900_omni.pkl"]
-for pkl in pkls:
-  b_dict = calcs_read(pkl_dir, pkl)
-  b_dict['metrics'] = metrics(b_dict['b_meas'], b_dict['b_models'])
-  satellite = pkl.split("_")[0]
-  plot(b_dict, title=satellite)
-  savefig(pkl_dir, pkl)
 
-exit()
+
+if plot_only:
+  for pkl in pkls:
+    infile, _ = io_files(pkl_dir, pkl)
+    b_dict = pandas.read_pickle(infile)
+    plot(b_dict, title=pkl.split("_")[0])
+    savefig(pkl_dir, pkl)
+  exit()
+
 
 for pkl in pkls:
 
   satellite = pkl.split("_")[0]
   print(f"Processing {satellite}")
 
-  if not os.path.exists(os.path.join(pkl_dir, pkl)):
-    raise FileNotFoundError(f"Pickle file {os.path.join(pkl_dir, pkl)}")
+  infile, outfile = io_files(pkl_dir, pkl)
 
-  print(f"  Reading {os.path.join(pkl_dir, pkl)}")
-  satellite_df = pandas.read_pickle(os.path.join(pkl_dir, pkl))
+  if not recalc_field and os.path.exists(outfile):
+    print("  Calculation file exists and recalc=False; not re-calculating field.")
+    if not recalc_metrics:
+      print("  Calculation file exists and recalc_metrics=False; not re-calculating metrics.")
+    else:
+      print("  Calculation file exists but recalc_metrics=True; re-calculating metrics.")
+      b_dict = pandas.read_pickle(outfile)
+      b_dict['metrics'] = metrics(b_dict['b_meas'], b_dict['b_models'])
+      pandas.to_pickle(b_dict, outfile)
+    continue
 
-  times, positions, b_models = compute(satellite_df, extMags, n_max=n_max)
+  if not os.path.exists(infile):
+    raise FileNotFoundError(f"Pickle file {infile}")
 
-  db_meas = satellite_df[['bx[nT]', 'by[nT]', 'bz[nT]']].values[:n_max]
-  # Add IGRF field to get total field for comparison with measurement
-  b_meas = db_meas + b_models['0']
+  print(f"  Reading {infile}")
+  satellite_df = pandas.read_pickle(infile)
 
-  b_dict = {
-    'times': times,
-    'positions': positions,
-    'db_meas': db_meas,
-    'b_meas': b_meas,
-    'b_models': b_models
-  }
+  b_dict = compute(satellite_df, extMags, n_max=n_max)
 
-  calcs_write(b_dict, pkl_dir, pkl)
+  print(f"  Writing {outfile}")
+  pandas.to_pickle(b_dict, outfile)
 
-  #s = stats(b_meas_tot, b_igrf, b_models)
-  #plot(times, b_meas_tot, b_models)
+  plot(b_dict, title=satellite)
+
+  savefig(pkl_dir, pkl)
