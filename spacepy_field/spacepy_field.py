@@ -117,7 +117,7 @@ def field(times, positions, extMag, grid=False, csys='GSM', intMag=0, progress=F
     B = numpy.full((n, 3), numpy.nan)
     for i, (time, position) in enumerate(zip(times, positions)):
       if progress and (i % progress == 0 or i == n - 1):
-        print(f"\r{i+1}/{n}", end='', flush=True)
+        print(f"\r  {i+1}/{n}", end='', flush=True)
 
       if extMag == 'TS07':
         install_deps.ts07(year=int(time[0:4]), doy=t.DOY[0])
@@ -131,8 +131,7 @@ def field(times, positions, extMag, grid=False, csys='GSM', intMag=0, progress=F
       else:
         B[i] = _transform_Bfield(BGEO, time, csys)
     if progress:
-      print()
-
+      print(100*"\b", end='', flush=True)
     return B
 
   B = numpy.full((len(times), len(positions), 3), numpy.nan)
