@@ -34,8 +34,11 @@ def plot(b_dict, title="", figsize=(8.5, 12), facecolor='white', styles=None):
     axs[i].set_ylabel(ylabels[i])
     axs[i].grid(True)
     for midx, model in enumerate(y2.keys()):
+      label = model
+      if model == '0':
+        label = 'IGRF'
       stats = b_dict['metrics'][model]
-      label = f"{model} (nans={stats['n_nans'][i]}, PE={stats['pe'][i]:.2f})"
+      label = f"{label} (nans={stats['n_nans'][i]}, PE={stats['pe'][i]:.2f})"
       ti, yi = utilrsw.mpl.insert_nans(t, y2[model][:, i])
       axs[i].plot(ti, yi, label=label)
       axs[i].legend()
@@ -43,15 +46,14 @@ def plot(b_dict, title="", figsize=(8.5, 12), facecolor='white', styles=None):
   datetick()
 
 
-def savefig(pkl_dir, pkl):
+def savefig(outfile):
   from matplotlib import pyplot as plt
-  basename = os.path.splitext(os.path.basename(pkl))[0]
-  file = os.path.join(pkl_dir, f"{basename}.calc.png")
-  print(f"  Saving {file}")
+  file = outfile.replace(".pkl", ".png")
+  print(f"  Writing {file}")
   plt.savefig(file, dpi=300, bbox_inches='tight')
 
 
-def compute(satellite_df, extMag, n_max=-1):
+def compute(satellite_df, extMag, n_max):
 
   # Table 1 in documentation,
   # {pkl_dir}/../doc/Magnetic Field Modeling Database Description Final.pdf,
@@ -105,51 +107,73 @@ def metrics(b_meas, b_models):
   stats = {}
   for model in b_models.keys():
     n_nan = numpy.sum(numpy.isnan(b_models[model]), axis=0)
+    num = numpy.nanmean((b_meas - b_models[model])**2, axis=0)
+    den = numpy.nanvar(b_meas, axis=0)
+    pe = 1 - num/den
     stats[model] = {
       'n_nans': n_nan,
       'mean_error': numpy.nanmean(b_meas - b_models[model], axis=0),
       'mean_abs_error': numpy.nanmean(numpy.abs(b_meas - b_models[model]), axis=0),
       'rmse': numpy.sqrt(numpy.nanmean((b_meas - b_models[model])**2, axis=0)),
-      'pe': 1-numpy.nansum((b_meas - b_models[model])**2, axis=0) / numpy.nansum(b_meas**2, axis=0)
+      'pe': pe
     }
 
   return stats
 
 
-def io_files(pkl_dir, pkl):
+def io_files(pkl_dir, pkl, n_max):
   infile = os.path.join(pkl_dir, pkl)
   basename = os.path.splitext(os.path.basename(pkl))[0]
-  outfile = os.path.join(pkl_dir, f"{basename}.calcs.pkl")
+  n_max_str = f".n_max-{n_max}." if n_max > 0 else "."
+  outfile = os.path.join(pkl_dir, f"{basename}.calcs{n_max_str}pkl")
   return infile, outfile
 
 
-# If False, does not calculate models if .calcs.pkl file already exists.
-recalc_field = False
+def cli():
+  import argparse
 
-# If True recomputes metrics. Use if metrics() changes.
-recalc_metrics = False
+  description="Compute and plot magnetic field models for satellite data."
+  parser = argparse.ArgumentParser(description=description)
+  parser.add_argument(
+    "--recalc-field",
+    dest="recalc_field",
+    action="store_true",
+    help="If False, does not calculate models if .calcs.pkl file already exists."
+  )
+  parser.add_argument(
+    "--recalc-metrics",
+    dest="recalc_metrics",
+    action="store_true",
+    help="If True recomputes metrics. Use if metrics() changes."
+  )
+  parser.add_argument(
+    "--plot-only",
+    dest="plot_only",
+    action="store_true",
+    help="If True, only plots from existing .calcs.pkl files."
+  )
+  parser.add_argument(
+    "--n-max",
+    dest="n_max",
+    type=int,
+    default=-1,
+    help="Number of data points to compute. If not set, computes for all data points."
+  )
 
-plot_only = False
+  args = parser.parse_args()
 
-# Number of data points to compute. -1 for all.
-n_max = -1
+  return args
+
+args = cli()
 
 # '0' (IGRF) must be in list
-extMags = ['0', 'MEAD', 'T89', 'T96']
-
+extMags = [
+  '0', 'MEAD', 'T87SHORT', 'T87LONG', 'T89', 'T96', 'OPQUIET', 'OPDYN', 'OSTA'
+]
+extMags = ['0']
 pkl_dir = "../timeseries-predict/data/raw/satellite-b/files/"
 
-
 pkls = ["goes8_1996_avg_900_omni.pkl", "goes9_1996_avg_900_omni.pkl"]
-
-
-if plot_only:
-  for pkl in pkls:
-    infile, _ = io_files(pkl_dir, pkl)
-    b_dict = pandas.read_pickle(infile)
-    plot(b_dict, title=pkl.split("_")[0])
-    savefig(pkl_dir, pkl)
-  exit()
 
 
 for pkl in pkls:
@@ -157,14 +181,20 @@ for pkl in pkls:
   satellite = pkl.split("_")[0]
   print(f"Processing {satellite}")
 
-  infile, outfile = io_files(pkl_dir, pkl)
+  infile, outfile = io_files(pkl_dir, pkl, args.n_max)
 
-  if not recalc_field and os.path.exists(outfile):
+  if args.plot_only and os.path.exists(outfile):
+    b_dict = pandas.read_pickle(infile)
+    plot(b_dict, title=pkl.split("_")[0])
+    savefig(outfile)
+    continue
+
+  if not args.recalc_field and os.path.exists(outfile):
     print("  Calculation file exists and recalc=False; not re-calculating field.")
-    if not recalc_metrics:
-      print("  Calculation file exists and recalc_metrics=False; not re-calculating metrics.")
+    if not args.recalc_metrics:
+      print("  Calculation file exists and args.recalc_metrics=False; not re-calculating metrics.")
     else:
-      print("  Calculation file exists but recalc_metrics=True; re-calculating metrics.")
+      print("  Calculation file exists but args.recalc_metrics=True; re-calculating metrics.")
       b_dict = pandas.read_pickle(outfile)
       b_dict['metrics'] = metrics(b_dict['b_meas'], b_dict['b_models'])
       pandas.to_pickle(b_dict, outfile)
@@ -176,11 +206,11 @@ for pkl in pkls:
   print(f"  Reading {infile}")
   satellite_df = pandas.read_pickle(infile)
 
-  b_dict = compute(satellite_df, extMags, n_max=n_max)
+  b_dict = compute(satellite_df, extMags, args.n_max)
 
   print(f"  Writing {outfile}")
   pandas.to_pickle(b_dict, outfile)
 
   plot(b_dict, title=satellite)
 
-  savefig(pkl_dir, pkl)
+  savefig(outfile)
