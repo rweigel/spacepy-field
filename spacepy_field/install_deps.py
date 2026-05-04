@@ -5,7 +5,11 @@ import tarfile
 import logging
 import urllib.request
 
-url_ts07 = "http://mag.gmu.edu/git-data/spacepy-fields/all.tgz"
+# http://rbspgway.jhuapl.edu/models/magneticfieldmodeling/ts07d/coeffs/2017/all.tgz
+# is no longer available. But copy is at:
+url_ts07 = "http://mag.gmu.edu/git-data/spacepy-field/data/all.tgz"
+
+# Copies of omni files available at http://mag.gmu.edu/git-data/spacepy-field/data/
 url_omni = "https://spp-isois.sr.unh.edu/data_public/omni/"
 
 logger = logging.getLogger(__name__)

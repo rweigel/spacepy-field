@@ -20,6 +20,9 @@ R_E = 6371.2 # km
 def cli():
   import argparse
 
+  def parse_ext_mags(value):
+    return [part.strip() for part in value.split(',') if part.strip()]
+
   description="Compute and plot magnetic field models for satellite data."
   parser = argparse.ArgumentParser(description=description)
   parser.add_argument(
@@ -40,7 +43,7 @@ def cli():
     dest="satellite",
     type=str,
     default="",
-    help="If set, only processes files that start with this string (e.g., 'goes' to process all goes satellites or 'goes8')."
+    help="If set, only processes files that start with this string (e.g., 'goes' to process all goes satellites or 'goes8' or 'goes8_1996')."
   )
   parser.add_argument(
     "--pkl-dir",
@@ -59,10 +62,9 @@ def cli():
   parser.add_argument(
     "--ext-mags",
     dest="extMags",
-    type=str,
-    nargs="+",
+    type=parse_ext_mags,
     default=['0', 'MEAD', 'T87SHORT', 'T87LONG', 'T89', 'T96', 'OPQUIET', 'OPDYN', 'OSTA'],
-    help="List of external magnetic field models to compute."
+    help="Comma-separated list of external magnetic field models to compute."
   )
   parser.add_argument(
     "--workers",
@@ -105,6 +107,8 @@ def apply_mask(b_dict, satellite_df, mask):
 
   b_dict = masked_b_dict
   satellite_df = satellite_df[mask_array]
+
+  print(f"  Computing metrics for masked data with {len(b_dict['times'])} points (mask keeps {numpy.mean(mask_array)*100:.2f}% of data)")
   b_dict['b_metrics'] = metrics(b_dict['b_meas'], b_dict['b_models'])
   b_dict['db_metrics'] = metrics(b_dict['db_meas'], b_dict['db_models'])
 
@@ -113,12 +117,16 @@ def apply_mask(b_dict, satellite_df, mask):
 
 def plots(b_dict, satellite_df, out_dir, title="", figsize=(8.5, 12)):
 
+  if False:
+    mask = satellite_df['symh[nT]'].between(-100, -50).to_numpy()
+    plot(b_dict, satellite_df, out_dir, mask=mask, db=False, title=title, figsize=figsize)
+    plot(b_dict, satellite_df, out_dir, mask=mask, db=True, title=title, figsize=figsize)
+
   plot(b_dict, satellite_df, out_dir, db=False, title=title, figsize=figsize)
   plot(b_dict, satellite_df, out_dir, db=True, title=title, figsize=figsize)
-  return
-
   t = list(b_dict['times'])
 
+  return
   # Create one plot per year.
   years = sorted(set(ti.year for ti in t))
   months = sorted(set(ti.month for ti in t))
@@ -128,17 +136,19 @@ def plots(b_dict, satellite_df, out_dir, title="", figsize=(8.5, 12)):
         mask = [ti.year == year and ti.month == month and ti.day == day for ti in t]
         if not any(mask):
           continue
-        out_dir = os.path.join(out_dir, 'figures')
+        out_subdir = os.path.join(out_dir, 'figures')
         kwargs = {
           "mask": mask,
-          "mask_suffix": f"_{year}-{month:02d}-{day:02d}",
+          "mask_suffix": "",
+          "mask_prefix": f"{year}-{month:02d}-{day:02d}_",
           "title": title,
           "figsize": figsize
         }
-        plot(b_dict, satellite_df, out_dir, **kwargs)
+        plot(b_dict, satellite_df, out_subdir, db=False, **kwargs)
+        plot(b_dict, satellite_df, out_subdir, db=True, **kwargs)
 
 
-def plot(b_dict, satellite_df, out_dir, db=False, mask=None, mask_suffix="", title="", figsize=(8.5, 12)):
+def plot(b_dict, satellite_df, out_dir, db=False, mask=None, mask_prefix="", mask_suffix="", title="", figsize=(8.5, 12)):
 
   import numpy
   import matplotlib
@@ -154,6 +164,7 @@ def plot(b_dict, satellite_df, out_dir, db=False, mask=None, mask_suffix="", tit
     'mathtext.fontset': 'stix',
     'legend.fontsize': 6,
   })
+  legend_prop = {'family': 'monospace', 'size': 6}
 
   if mask is not None:
     b_dict, satellite_df = apply_mask(b_dict, satellite_df, mask)
@@ -202,10 +213,14 @@ def plot(b_dict, satellite_df, out_dir, db=False, mask=None, mask_suffix="", tit
     if i == 1:
       tlat, latc = utilrsw.mpl.insert_nans(t, lat)
       tlon, lonc = utilrsw.mpl.insert_nans(t, lon)
+      tlon, lonc = utilrsw.mpl.insert_nans(t, lon, y_thresh=180)
+
       axs_t[i].plot(tlon, lonc, 'b')
       axs_t[i].plot(tlat, latc, 'k')
-      axs_t[i].legend(['Longitude', 'Latitude'])
+      axs_t[i].legend(['Longitude', 'Latitude'], prop=legend_prop)
       axs_t[i].set_ylabel('degrees')
+      # Major grid at 90 degrees, minor grid at 15 degrees.
+      axs_t[i].set_yticks(numpy.arange(-180, 180+90, 90))
       axs_t[i].grid(True)
       continue
 
@@ -228,13 +243,17 @@ def plot(b_dict, satellite_df, out_dir, db=False, mask=None, mask_suffix="", tit
         stats = b_dict['db_metrics'][model]
       else:
         stats = b_dict['b_metrics'][model]
-      fn = stats['n_nans'][c]/len(t)
-      label = f"{label} (PE={stats['pe'][c]:.2f}; $f_n$={fn:.2f})"
+      label_short = label[0:4] if len(label) > 4 else label + " "*(4-len(label))
+      fn = stats['n_nan'][c]/len(t)
+      pe = f"{stats['pe'][c]:5.2f}" if not numpy.isnan(stats['pe'][c]) else "     "
+      label = f"{label_short} PE={pe}"
+      if fn > 0:
+        label += f" $f_n$={fn:.2f}"
       tc, yc = utilrsw.mpl.insert_nans(t, y2[model][:, c])
       axs_t[i].plot(tc, yc, label=label)
-      axs_t[i].legend()
-      axs_s[c].plot(y1[:, c], y2[model][:, c], '.', label=label)
-      axs_s[c].legend(loc='center left', bbox_to_anchor=(1.02, 0.5))
+      axs_t[i].legend(prop=legend_prop)
+      axs_s[c].plot(y1[:, c], y2[model][:, c], '.', ms=2, label=label)
+      axs_s[c].legend(loc='center left', bbox_to_anchor=(1.02, 0.5), handletextpad=0.0, prop=legend_prop)
 
   for ax in axs_s:
     ax.set_aspect('equal', adjustable='box')
@@ -244,8 +263,8 @@ def plot(b_dict, satellite_df, out_dir, db=False, mask=None, mask_suffix="", tit
   datetick(axes=axs_t[-1])
 
   b_str = "_db" if db else "_b"
-  savefig(fig_t, os.path.join(out_dir, f"timeseries{b_str}{mask_suffix}.png"))
-  savefig(fig_s, os.path.join(out_dir, f"scatter{b_str}{mask_suffix}.png"))
+  savefig(fig_t, os.path.join(out_dir, f"{mask_prefix}timeseries{b_str}{mask_suffix}.png"))
+  savefig(fig_s, os.path.join(out_dir, f"{mask_prefix}scatter{b_str}{mask_suffix}.png"))
 
 
 def savefig(fig, file):
@@ -320,6 +339,7 @@ def io_files(pkl_dir, pkl, n_max):
   return in_file, out_file
 
 
+
 def satellite_pkls(pkl_dir, satellite):
   files = os.listdir(pkl_dir)
   pkls = [f for f in files if f.endswith(".pkl") and f.startswith(satellite)]
@@ -379,28 +399,65 @@ def compute(satellite_df, extMags, n_max):
 
 def metrics(b_meas, b_models):
   import numpy
-  import warnings
 
   stats = {}
   for model in b_models.keys():
-    n_nan = numpy.sum(numpy.isnan(b_models[model]), axis=0)
-    if numpy.all(n_nan == b_meas.shape[0]):
-      print(f"  Warning: Model '{model}' has NaN values for all data points. Metrics will be NaN.")
-    # Temporarily disable RuntimeWarning: Mean of empty slice
-    with warnings.catch_warnings():
-      warnings.filterwarnings('ignore', message='Mean of empty slice', category=RuntimeWarning)
-      mean_error = numpy.nanmean(b_meas - b_models[model], axis=0)
-      mean_abs_error = numpy.nanmean(numpy.abs(b_meas - b_models[model]), axis=0)
-      rmse = numpy.sqrt(numpy.nanmean((b_meas - b_models[model])**2, axis=0))
-      num = numpy.nanmean((b_meas - b_models[model])**2, axis=0)
-      den = numpy.nanvar(b_meas, axis=0)
-      pe = 1 - num/den
+
+    mean_error = numpy.full(b_meas.shape[1], numpy.nan)
+    mean_abs_error = numpy.full(b_meas.shape[1], numpy.nan)
+    rmse = numpy.full(b_meas.shape[1], numpy.nan)
+    pe = numpy.full(b_meas.shape[1], numpy.nan)
+    cc = numpy.full(b_meas.shape[1], numpy.nan)
+
+    for c in range(b_meas.shape[1]):
+      n_nan = numpy.sum(numpy.isnan(b_models[model][:, c]))
+      if n_nan == b_meas.shape[0]:
+        msg = f"    Warning: Model '{model}' has all NaN values ({n_nan}) "
+        msg += f"for component {c}. Metrics will be NaN for this component."
+        print(msg)
+        continue
+
+      # Catch case where b_meas[c] - b_models[model][c] is empty
+      if numpy.isnan(b_meas[:, c] - b_models[model][:, c]).all():
+        msg = f"    Warning: difference between measured and model = '{model}' "
+        msg += f"is all NaN for component {c}. Metrics will be NaN for this component."
+        print(msg)
+        continue
+
+      mean_error[c] = numpy.nanmean(b_meas[:, c] - b_models[model][:, c])
+      mean_abs_error[c] = numpy.nanmean(numpy.abs(b_meas[:, c] - b_models[model][:, c]))
+      rmse[c] = numpy.sqrt(numpy.nanmean((b_meas[:, c] - b_models[model][:, c])**2))
+
+      num = numpy.nanmean((b_meas[:, c] - b_models[model][:, c])**2)
+      den = numpy.nanvar(b_meas[:, c])
+      if den == 0:
+        msg = f"    Warning: Measured values have zero variance for component {c}."
+        msg += "PE will be NaN for this component."
+        print(msg)
+      else:
+        pe[c] = 1 - num/den
+
+      A = b_meas[:, c]          - numpy.nanmean(b_meas[:, c])
+      B = b_models[model][:, c] - numpy.nanmean(b_models[model][:, c])
+      C = numpy.nanstd(b_meas[:, c])
+      D = numpy.nanstd(b_models[model][:, c])
+      if C == 0 or D == 0:
+        if model != '0':
+          # When comparing db for model to measurements, db for '0' (IGRF) is zero.
+          # So we expect the std to be zero and don't need to warn.
+          msg = f"    Warning: Model '{model}' has zero standard deviation for "
+          msg += f"component {c}. CC will be NaN for this component."
+          print(msg)
+      else:
+        cc[c] = numpy.nanmean(A * B, axis=0) / (C * D)
+
     stats[model] = {
-      'n_nans': n_nan,
+      'n_nan': numpy.sum(numpy.isnan(b_models[model]), axis=0),
       'mean_error': mean_error,
       'mean_abs_error': mean_abs_error,
       'rmse': rmse,
-      'pe': pe
+      'pe': pe,
+      'cc': cc
     }
 
   return stats
@@ -430,7 +487,7 @@ def add_nn_results(satellite_id, b_dict, run_id):
   measured = pandas.concat([measured_train, measured_test], ignore_index=True)
   measured = measured.sort_values('datetime')
   measured = measured[(measured['datetime'] >= start) & (measured['datetime'] <= stop)]
-  measured = measured[['datetime', 'bx', 'by', 'bz']]
+  measured = measured[['datetime', 'bx[nT]', 'by[nT]', 'bz[nT]']]
 
   nn_times = pandas.to_datetime(predicted['datetime']).to_numpy()
   b_times = pandas.to_datetime(b_dict['times']).to_numpy()
@@ -438,9 +495,14 @@ def add_nn_results(satellite_id, b_dict, run_id):
     # TODO: Make times the union of b_dict['times'] and predicted['datetime'],
     # and align b_dict['b_meas'] and b_dict['b_models'] with the new times,
     # filling in NaN for any time points that are in one but not the other.
-    raise ValueError("NN datetime values do not match b_dict['times']")
+    # Print out differences in times for debugging.
+    nn_only_times = set(nn_times) - set(b_times)
+    b_only_times = set(b_times) - set(nn_times)
+    print(f"NN times not in b_dict['times']: {sorted(nn_only_times)}")
+    print(f"b_dict['times'] not in NN times: {sorted(b_only_times)}")
+    raise ValueError(f"{satellite_id} NN datetime values do not match b_dict['times']")
 
-  db_model = predicted[['bx', 'by', 'bz']].to_numpy()
+  db_model = predicted[['bx[nT]', 'by[nT]', 'bz[nT]']].to_numpy()
   b_dict['db_models']['nn_mimo'] = db_model
 
 
@@ -458,6 +520,8 @@ def run_one(pkl, pkl_dir, n_max, recalc_field, nn_run_id, extMags):
 
   print(f"  Reading db measured from {in_file}")
   satellite_df = pandas.read_pickle(in_file)
+  if n_max > 0:
+    satellite_df = satellite_df.iloc[:n_max]
 
   b_dict = None
   extMags_needed = extMags
@@ -485,8 +549,6 @@ def run_one(pkl, pkl_dir, n_max, recalc_field, nn_run_id, extMags):
     b_dict['db_models'][model] = b_dict['b_models'][model] - b_dict['b_models']['0']
 
   b_dict['db_meas'] = satellite_df[['bx[nT]', 'by[nT]', 'bz[nT]']].values
-  if n_max > 0:
-    b_dict['db_meas'] = b_dict['db_meas'][:n_max]
 
   # Add IGRF field to get total field for comparison with measurement.
   # TODO: We don't know if this is the same 'IGRF' field subtracted from
@@ -514,7 +576,6 @@ def main():
   args = cli()
 
   extMags = args.extMags
-
   pkls = satellite_pkls(args.pkl_dir, args.satellite)
 
   run_args = (args.pkl_dir, args.n_max, args.recalc_field, args.nn_run_id, extMags)
