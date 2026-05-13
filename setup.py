@@ -4,6 +4,7 @@ install_requires = [
     "numpy",
     "pandas",
     "spacepy",
+    "datetick",
     "utilrsw[mpl,io] @ git+https://github.com/rweigel/utilrsw@main"
 ]
 

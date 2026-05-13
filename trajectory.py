@@ -339,7 +339,6 @@ def io_files(pkl_dir, pkl, n_max):
   return in_file, out_file
 
 
-
 def satellite_pkls(pkl_dir, satellite):
   files = os.listdir(pkl_dir)
   pkls = [f for f in files if f.endswith(".pkl") and f.startswith(satellite)]
@@ -569,7 +568,45 @@ def run_one(pkl, pkl_dir, n_max, recalc_field, nn_run_id, extMags):
   print(f"  Writing {out_file}")
   pandas.to_pickle(b_dict, out_file)
 
+  table(b_dict, satellite_name, os.path.dirname(out_file))
   plots(b_dict, satellite_df, os.path.dirname(out_file), title=satellite_name)
+
+
+def table(b_dict, satellite_name, out_dir):
+  import pandas
+
+  markdown = ""
+
+  for key in ['b_metrics', 'db_metrics']:
+    rows = []
+    for model, metrics in b_dict[key].items():
+      row = {
+        'model': model,
+        'PEx': metrics['pe'][0],
+        'PEy': metrics['pe'][1],
+        'PEz': metrics['pe'][2],
+        'CCx': metrics['cc'][0],
+        'CCy': metrics['cc'][1],
+        'CCz': metrics['cc'][2],
+        'RSMEx': metrics['rmse'][0],
+        'RSMEy': metrics['rmse'][1],
+        'RSMEz': metrics['rmse'][2],
+        'MEx': metrics['mean_error'][0],
+        'MEy': metrics['mean_error'][1],
+        'MEz': metrics['mean_error'][2]
+      }
+      rows.append(row)
+
+    df = pandas.DataFrame(rows)
+
+    markdown += f"## {satellite_name} - {'B' if key == 'b_metrics' else 'ΔB'} Metrics\n\n"
+    markdown += df.to_markdown(index=False, floatfmt=".2f") + "\n\n"
+
+  out_file = os.path.join(out_dir, f"summary.md")
+  print(f"  Writing {out_file}")
+
+  with open(out_file, "w", encoding="utf-8") as file:
+    file.write(markdown)
 
 
 def main():
