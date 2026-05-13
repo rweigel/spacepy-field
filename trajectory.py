@@ -243,7 +243,8 @@ def plot(b_dict, satellite_df, out_dir, db=False, mask=None, mask_prefix="", mas
         stats = b_dict['db_metrics'][model]
       else:
         stats = b_dict['b_metrics'][model]
-      label_short = label[0:4] if len(label) > 4 else label + " "*(4-len(label))
+      short_len = 5
+      label_short = label[0:short_len] if len(label) > short_len else label + " "*(short_len-len(label))
       fn = stats['n_nan'][c]/len(t)
       pe = f"{stats['pe'][c]:5.2f}" if not numpy.isnan(stats['pe'][c]) else "     "
       label = f"{label_short} PE={pe}"
@@ -474,8 +475,8 @@ def add_nn_results(satellite_id, b_dict, run_id):
 
   measured_train = reps[0]['data']['train']
   measured_test = reps[0]['data']['test']
-  predicted_train = reps[0]['models']['nn_mimo']['predicted']['train']
-  predicted_test = reps[0]['models']['nn_mimo']['predicted']['test']
+  predicted_train = reps[0]['models'][run_id]['predicted']['train']
+  predicted_test = reps[0]['models'][run_id]['predicted']['test']
 
   # Combine predicted_train and predicted_test into a single DataFrame with a 'datetime' column.
   # Sort by 'datetime' and then filter to the specified time range.
@@ -502,7 +503,7 @@ def add_nn_results(satellite_id, b_dict, run_id):
     raise ValueError(f"{satellite_id} NN datetime values do not match b_dict['times']")
 
   db_model = predicted[['bx[nT]', 'by[nT]', 'bz[nT]']].to_numpy()
-  b_dict['db_models']['nn_mimo'] = db_model
+  b_dict['db_models'][run_id] = db_model
 
 
 def run_one(pkl, pkl_dir, n_max, recalc_field, nn_run_id, extMags):
@@ -554,12 +555,12 @@ def run_one(pkl, pkl_dir, n_max, recalc_field, nn_run_id, extMags):
   #       the measurements to get db_meas. This need to be checked.
   b_dict['b_meas'] = b_dict['db_meas'] + b_dict['b_models']['0']
 
-  # Add db_models['nn_mimo'] to b_dict. The NN model predicts db measured from
+  # Add db_models[run_id] to b_dict. The NN model predicts db measured from
   # the Stephens database.
   print(f"  Reading db predicted NN results.")
   add_nn_results(satellite_id, b_dict, nn_run_id)
   # Add IGRF field to NN model to get total field for comparison with measurement.
-  b_dict['b_models']['nn_mimo'] = b_dict['db_models']['nn_mimo'] + b_dict['b_models']['0']
+  b_dict['b_models'][nn_run_id] = b_dict['db_models'][nn_run_id] + b_dict['b_models']['0']
 
   print(f"  Calculating metrics.")
   b_dict['b_metrics'] = metrics(b_dict['b_meas'], b_dict['b_models'])
