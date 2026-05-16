@@ -12,27 +12,73 @@ def external_models():
   return ['0', 'ALEX', 'MEAD', 'T87SHORT', 'T87LONG', 'T89', 'OPQUIET', 'OPDYN', 'T96', 'OSTA', 'T01QUIET', 'T01STORM', 'T05', 'TS07']
 
 
-def external_model_name(extMag):
+def external_model_name(extMag, details=False):
+  # https://github.com/spacepy/spacepy/blob/cb983af96e06265dc35463e0d725a11eaf0682a6/spacepy/irbempy/__init__.py#L83
   models = {
-    '0': 'IGRF',
-    'ALEX': 'Alexeev 2000',
-    'MEAD': 'Mead 1964',
-    'T87SHORT': 'Tsyganenko 1987 short',
-    'T87LONG': 'Tsyganenko 1987 long',
-    'T89': 'Tsyganenko 1989',
-    'OPQUIET': 'OP77 quiet',
-    'OPDYN': 'OP77 dynamic',
-    'T96': 'Tsyganenko 1996',
-    'OSTA': 'Olsen & Stadsnes 2002',
-    'T01QUIET': 'Tsyganenko 2001 quiet',
-    'T01STORM': 'Tsyganenko 2001 storm',
-    'T05': 'Tsyganenko 2005',
-    'TS07': "Tsyganenko & Sitnov 2007"
+    '0': [
+      'IGRF',
+      None
+    ],
+    'ALEX': [
+      'Alexeev [2000]',
+      'Uses 0<=Kp<=9 - Valid for rGEO<=17.'
+    ],
+    'MEAD': [
+      'Mead & Fairfield [1975]',
+      'Uses 0<=Kp<=9 - Valid for rGEO<=17. Re'
+    ],
+    'T87SHORT': [
+      'Tsyganenko [1987] short',
+      'Uses 0<=Kp<=9 - Valid for rGEO<=30. Re'
+    ],
+    'T87LONG': [
+      'Tsyganenko [1987] long',
+      'Uses 0<=Kp<=9 - Valid for rGEO<=70. Re'
+    ],
+    'T89': [
+      'Tsyganenko [1989]',
+      'Uses 0<=Kp<=9 - Valid for rGEO<=70. Re'
+    ],
+    'OPQUIET': [
+      'Olson & Pfitzer [1977] quiet',
+      'Valid for rGEO<=15. Re'
+    ],
+    'OPDYN': [
+      'Olson & Pfitzer [1988] dynamic',
+      'Uses 5.<=dens<=50., 300.<=velo<=500., -100.<=Dst<=20. - Valid for rGEO<=60. Re'
+    ],
+    'T96': [
+      'Tsyganenko [1996]',
+      'Uses -100.<=Dst (nT)<=20., 0.5<=Pdyn (nPa)<10., |ByIMF| (nT)<=10., |BzIMF (nT)<=10. - Valid for rGEO<=40. Re)'
+    ],
+    'OSTA': [
+      'Ostapenko and Maltsev [1997]',
+      'Uses Dst, Pdyn, BzIMF, Kp'
+    ],
+    'T01QUIET': [
+      'Tsyganenko [2002a,b]',
+      'Uses -50.<Dst (nT)<20., 0.5<Pdyn (nPa)<=5., |ByIMF| (nT)<=5., |BzIMF| (nT)<=5., 0.<=G1<=10., 0.<=G2<=10. - Valid for xGSM>=-15. Re)'
+    ],
+    'T01STORM': [
+      'Tsyganenko, Singer & Kasper [2003]',
+      'Uses Dst, Pdyn, ByIMF, BzIMF, G2, G3 - there is no upper or lower limit for those inputs - Valid for xGSM>=-15. Re'
+    ],
+    'T05': [
+      'Tsyganenko and Sitnov 2005',
+      'Uses Dst, Pdyn, ByIMF, BzIMF, W1, W2, W3, W4, W5, W6 - no upper or lower limit for inputs - Valid for xGSM>=-15. Re'
+    ],
+    'TS07': [
+      'Tsyganenko and Sitnov 2007',
+      'Uses specially calculated coefficient files.'
+    ]
   }
 
   if extMag not in models:
     raise ValueError(f"extMag {extMag} not in {list(models.keys())}")
-  return models[extMag]
+  if details:
+    return f"{models[extMag][0]}. Details: {models[extMag][1]}"
+  else:
+    return models[extMag][0]
 
 
 def internal_models():
@@ -53,7 +99,7 @@ def internal_model_name(intMag):
   return models.get(intMag, 'Unknown')
 
 
-def field(times, positions, extMag, grid=False, csys='GSM', intMag=0, progress=False):
+def field(times, positions, extMag, grid=False, csys='GSM', intMag=0, progress=False, progress_prefix=""):
   """
   Given a time or list of times, position(s), and external magnetic field model,
   return the magnetic field vector(s) in GSM coordinates.
@@ -117,7 +163,7 @@ def field(times, positions, extMag, grid=False, csys='GSM', intMag=0, progress=F
     B = numpy.full((n, 3), numpy.nan)
     for i, (time, position) in enumerate(zip(times, positions)):
       if progress and (i % progress == 0 or i == n - 1):
-        print(f"\r  {i+1}/{n}", end='', flush=True)
+        print(f"\r{progress_prefix}{i+1}/{n}", end='', flush=True)
 
       if extMag == 'TS07':
         install_deps.ts07(year=int(time[0:4]), doy=t.DOY[0])

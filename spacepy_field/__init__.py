@@ -4,16 +4,16 @@ from spacepy_field.spacepy_field import internal_models
 from spacepy_field.spacepy_field import internal_model_name
 from spacepy_field.spacepy_field import external_model_name
 
-import spacepy
 import os
+import spacepy
 import time as _time
+
 leapsec_file = os.path.join(spacepy.DOT_FLN, 'data', 'tai-utc.dat')
 if not os.path.exists(leapsec_file) or (_time.time() - os.path.getmtime(leapsec_file)) > 180 * 86400:
   spacepy.toolbox.update(leapsecs=True)
 
 
-
-def print_results(times, positions, extMag, b_model, csys, intMag, b_meas=None):
+def print_results(times, positions, b_model, intMag, extMag, csys, b_meas=None):
 
   import numpy
   numpy.set_printoptions(precision=2)
