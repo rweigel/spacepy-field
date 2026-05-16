@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spacepy_field"
+version = "0.0.1"
+description = "Wrapper for SpacePy interface to IRBEM magnetic field models"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+  { name = "Bob Weigel", email = "rweigel@gmu.edu" },
+]
+dependencies = [
+  "numpy",
+  "pandas",
+  "spacepy",
+  "datetick",
+  "utilrsw[mpl,io] @ git+https://github.com/rweigel/utilrsw@main",
+]
+
+[tool.setuptools.packages.find]
+include = ["spacepy_field*"]
